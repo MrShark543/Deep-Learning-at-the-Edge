@@ -607,15 +607,38 @@ class SingleScaleTrainer:
             'count': 0.0  # Start with 0
         }
         
+        # model.compile(
+        #     optimizer=tf.keras.optimizers.SGD(
+        #         learning_rate=CONFIG.INITIAL_LR,
+        #         momentum=CONFIG.MOMENTUM
+        #     ),
+        #     loss=get_loss_functions(),
+        #     loss_weights=initial_loss_weights,
+        #     metrics=get_metrics()
+        # )
+
+        #for kaggle
         model.compile(
-            optimizer=tf.keras.optimizers.SGD(
-                learning_rate=CONFIG.INITIAL_LR,
-                momentum=CONFIG.MOMENTUM
-            ),
-            loss=get_loss_functions(),
-            loss_weights=initial_loss_weights,
-            metrics=get_metrics()
-        )
+    optimizer=tf.keras.optimizers.SGD(
+        learning_rate=CONFIG.INITIAL_LR,
+        momentum=CONFIG.MOMENTUM
+    ),
+    loss={
+        'density_map': get_loss_functions()['density_map'],
+        'count': get_loss_functions()['count']
+    },
+    loss_weights={
+        'density_map': CONFIG.DENSITY_LOSS_WEIGHT,
+        'count': 0.0
+    },
+    metrics={
+        'density_map': [tf.keras.metrics.MeanSquaredError(name='mse')],
+        'count': [
+            tf.keras.metrics.MeanAbsoluteError(name='mae'),
+            tf.keras.metrics.MeanSquaredError(name='mse')
+        ]
+    }
+)
         
         # Save model architecture
         with open(self.exp_dir / "model_summary.txt", 'w') as f:
