@@ -380,8 +380,7 @@ from models.single_scale_vgg import create_single_scale_model, count_parameters
 from data.simple_loader import SimpleDataLoader, create_train_val_datasets
 from models.losses import get_loss_functions, get_metrics
 from utils.cuda_setup import auto_setup, estimate_training_time
-from models.losses import euclidean_loss, mae_count, mse_count, rmse_count
-
+from models.losses import euclidean_loss, relative_count_loss, mae_count, mse_count, rmse_count
 class SingleScaleTrainer:
     """Trainer for Single-Scale SACNN"""
     
@@ -622,8 +621,18 @@ class SingleScaleTrainer:
         learning_rate=CONFIG.INITIAL_LR,
         momentum=CONFIG.MOMENTUM
     ),
-    loss=euclidean_loss,
-    metrics=[mae_count, mse_count, rmse_count]
+    loss={
+        'density_map': euclidean_loss,
+        'count': relative_count_loss
+    },
+    loss_weights={
+        'density_map': 1.0,
+        'count': 0.0
+    },
+    metrics={
+        'density_map': [mse_count],
+        'count': [mae_count, mse_count, rmse_count]
+    }
 )
 
         #for kaggle
