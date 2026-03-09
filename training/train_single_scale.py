@@ -383,11 +383,32 @@ from utils.cuda_setup import auto_setup, estimate_training_time
 from models.losses import euclidean_loss, relative_count_loss, mae_count, mse_count, rmse_count
 
 def combined_training_loss(y_true, y_pred):
-    return euclidean_loss(y_true['density_map'], y_pred['density_map'])
+    # Keras 3 passes y_true as raw tensor, y_pred as dict
+    if isinstance(y_true, dict):
+        y_true_density = y_true['density_map']
+    else:
+        y_true_density = y_true
+    
+    if isinstance(y_pred, dict):
+        y_pred_density = y_pred['density_map']
+    else:
+        y_pred_density = y_pred
+        
+    return euclidean_loss(y_true_density, y_pred_density)
 
 def val_mae(y_true, y_pred):
-    true_count = tf.reduce_sum(y_true['density_map'], axis=[1, 2, 3])
-    pred_count = tf.reduce_sum(y_pred['density_map'], axis=[1, 2, 3])
+    if isinstance(y_true, dict):
+        y_true_density = y_true['density_map']
+    else:
+        y_true_density = y_true
+        
+    if isinstance(y_pred, dict):
+        y_pred_density = y_pred['density_map']
+    else:
+        y_pred_density = y_pred
+        
+    true_count = tf.reduce_sum(y_true_density, axis=[1, 2, 3])
+    pred_count = tf.reduce_sum(y_pred_density, axis=[1, 2, 3])
     return tf.reduce_mean(tf.abs(pred_count - true_count))
 
 class SingleScaleTrainer:
