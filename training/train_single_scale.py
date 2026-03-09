@@ -605,9 +605,7 @@ class SingleScaleTrainer:
             )
         else:
             model = create_single_scale_model(input_shape=(256, 256, 3))
-            density_output = model.output['density_map']
-            model = tf.keras.Model(inputs=model.input, outputs=density_output, name='SingleScaleSACNN_train')
-        
+            
         # Count parameters
         param_info = count_parameters(model)
         self.log(f"Model parameters: {param_info['total_params']:,}")
@@ -621,16 +619,6 @@ class SingleScaleTrainer:
             'density_map': CONFIG.DENSITY_LOSS_WEIGHT,
             'count': 0.0  # Start with 0
         }
-        
-        # model.compile(
-        #     optimizer=tf.keras.optimizers.SGD(
-        #         learning_rate=CONFIG.INITIAL_LR,
-        #         momentum=CONFIG.MOMENTUM
-        #     ),
-        #     loss=get_loss_functions(),
-        #     loss_weights=initial_loss_weights,
-        #     metrics=get_metrics()
-        # )
         model.compile(
     optimizer=tf.keras.optimizers.SGD(
         learning_rate=CONFIG.INITIAL_LR,
@@ -639,6 +627,7 @@ class SingleScaleTrainer:
     loss=combined_training_loss,
     metrics=[val_mae]
 )
+ 
 #         model.compile(
 #     optimizer=tf.keras.optimizers.SGD(
 #         learning_rate=CONFIG.INITIAL_LR,
@@ -658,21 +647,6 @@ class SingleScaleTrainer:
 #     }
 # )
 
-        #for kaggle
-#         model.compile(
-#     optimizer=tf.keras.optimizers.SGD(
-#         learning_rate=CONFIG.INITIAL_LR,
-#         momentum=CONFIG.MOMENTUM
-#     ),
-#     loss={
-#         'density_map': get_loss_functions()['density_map'],
-#         'count': get_loss_functions()['count']
-#     },
-#     loss_weights={
-#         'density_map': CONFIG.DENSITY_LOSS_WEIGHT,
-#         'count': 0.0
-#     }
-# ) 
         
         # Save model architecture
         with open(self.exp_dir / "model_summary.txt", 'w') as f:
