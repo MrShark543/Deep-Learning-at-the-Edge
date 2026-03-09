@@ -380,6 +380,7 @@ from models.single_scale_vgg import create_single_scale_model, count_parameters
 from data.simple_loader import SimpleDataLoader, create_train_val_datasets
 from models.losses import get_loss_functions, get_metrics
 from utils.cuda_setup import auto_setup, estimate_training_time
+from models.losses import euclidean_loss, mae_count, mse_count, rmse_count
 
 class SingleScaleTrainer:
     """Trainer for Single-Scale SACNN"""
@@ -478,22 +479,22 @@ class SingleScaleTrainer:
         ))
         
         # Custom callback to add count loss after certain epochs
-        class AddCountLossCallback(tf.keras.callbacks.Callback):
-            def __init__(self, add_epoch=CONFIG.ADD_COUNT_LOSS_EPOCH):
-                self.add_epoch = add_epoch
-                self.added = False
+        # class AddCountLossCallback(tf.keras.callbacks.Callback):
+        #     def __init__(self, add_epoch=CONFIG.ADD_COUNT_LOSS_EPOCH):
+        #         self.add_epoch = add_epoch
+        #         self.added = False
                 
-            def on_epoch_begin(self, epoch, logs=None):
-                if epoch == self.add_epoch and not self.added:
-                    print(f"\nAdding count loss at epoch {epoch} <<<\n")
-                    # Update loss weights
-                    self.model.loss_weights = {
-                        'density_map': CONFIG.DENSITY_LOSS_WEIGHT,
-                        'count': CONFIG.COUNT_LOSS_WEIGHT
-                    }
-                    self.added = True
+        #     def on_epoch_begin(self, epoch, logs=None):
+        #         if epoch == self.add_epoch and not self.added:
+        #             print(f"\nAdding count loss at epoch {epoch} <<<\n")
+        #             # Update loss weights
+        #             self.model.loss_weights = {
+        #                 'density_map': CONFIG.DENSITY_LOSS_WEIGHT,
+        #                 'count': CONFIG.COUNT_LOSS_WEIGHT
+        #             }
+        #             self.added = True
         
-        callbacks.append(AddCountLossCallback())
+        # callbacks.append(AddCountLossCallback())
         
         # Progress tracking 
         class ProgressCallback(tf.keras.callbacks.Callback):
@@ -616,22 +617,30 @@ class SingleScaleTrainer:
         #     loss_weights=initial_loss_weights,
         #     metrics=get_metrics()
         # )
-
-        #for kaggle
         model.compile(
     optimizer=tf.keras.optimizers.SGD(
         learning_rate=CONFIG.INITIAL_LR,
         momentum=CONFIG.MOMENTUM
     ),
-    loss={
-        'density_map': get_loss_functions()['density_map'],
-        'count': get_loss_functions()['count']
-    },
-    loss_weights={
-        'density_map': CONFIG.DENSITY_LOSS_WEIGHT,
-        'count': 0.0
-    }
+    loss=euclidean_loss,
+    metrics=[mae_count, mse_count, rmse_count]
 )
+
+        #for kaggle
+#         model.compile(
+#     optimizer=tf.keras.optimizers.SGD(
+#         learning_rate=CONFIG.INITIAL_LR,
+#         momentum=CONFIG.MOMENTUM
+#     ),
+#     loss={
+#         'density_map': get_loss_functions()['density_map'],
+#         'count': get_loss_functions()['count']
+#     },
+#     loss_weights={
+#         'density_map': CONFIG.DENSITY_LOSS_WEIGHT,
+#         'count': 0.0
+#     }
+# ) 
         
         # Save model architecture
         with open(self.exp_dir / "model_summary.txt", 'w') as f:
