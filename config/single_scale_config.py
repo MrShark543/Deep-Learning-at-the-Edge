@@ -69,7 +69,8 @@ class SingleScaleConfig:
     
     # ============= Data Configuration =============
     # Dataset paths
-    DATA_ROOT = Path("./datasets/shanghaitech_256x256_rgb")
+    # DATA_ROOT = Path("./datasets/shanghaitech_256x256_rgb")
+    DATA_ROOT = Path("/kaggle/input/datasets/shashanksathyan/modified-shagitech-part-b-dataset/shanghaitech_256x256_rgb")
     PART_A_PATH = DATA_ROOT / "part_A"
     PART_B_PATH = DATA_ROOT / "part_B"
     PART_MIXED_PATH = DATA_ROOT / "part_mixed"
