@@ -651,9 +651,8 @@ class SingleScaleTrainer:
         learning_rate=CONFIG.INITIAL_LR,
         momentum=CONFIG.MOMENTUM
     ),
-    loss={'density_map': combined_training_loss},
-    loss_weights={'density_map': 1.0},
-    metrics={'density_map': [val_mae]}
+    loss=combined_training_loss,
+    metrics=[val_mae]
 )
 #         model.compile(
 #     optimizer=tf.keras.optimizers.SGD(
