@@ -208,7 +208,7 @@ if __name__ == "__main__":
     outputs = model(dummy_input)
     
     # Verify output dimensions
-    expected_density_shape = (1, 16, 16, 1) 
+    expected_density_shape = (1, 32, 32, 1) 
     expected_count_shape = (1, 1, 1, 1)
     
     assert outputs['density_map'].shape == expected_density_shape, \

@@ -209,7 +209,7 @@ def main():
             print("="*50)
             
             #ORIGINAL model
-            model = create_single_scale_model(input_shape=(128, 128, 3))
+            model = create_single_scale_model(input_shape=(256, 256, 3))
             model.summary()
             
             from models.single_scale_edge import count_parameters

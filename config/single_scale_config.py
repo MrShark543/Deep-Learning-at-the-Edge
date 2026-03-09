@@ -58,7 +58,7 @@ class SingleScaleConfig:
 
 
     # ============= Edge Deployment Configuration =============
-    EDGE_DEPLOYMENT = True  # Set to True for Teensy deployment to use single_scale_edge file
+    EDGE_DEPLOYMENT = False  # Set to True for Teensy deployment to use single_scale_edge file
     WIDTH_MULTIPLIER = 0.25  # Channel reduction for edge
     USE_DEPTHWISE = True     # Use depthwise separable convs
     DROPOUT_RATE = 0.1       # Dropout to prevent overfitting
@@ -69,10 +69,10 @@ class SingleScaleConfig:
     
     # ============= Data Configuration =============
     # Dataset paths
-    DATA_ROOT = Path("./datasets\shanghaitech_256x256_rgb") #datasets\old\shanghaitech_128x128_rgb
+    DATA_ROOT = Path("./datasets/shanghaitech_256x256_rgb")
     PART_A_PATH = DATA_ROOT / "part_A"
     PART_B_PATH = DATA_ROOT / "part_B"
-    PART_MIXED_PATH = DATA_ROOT / "part_mixed" 
+    PART_MIXED_PATH = DATA_ROOT / "part_mixed"
     
     # Data splits
     TRAIN_SPLIT = "train"
