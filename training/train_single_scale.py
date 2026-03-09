@@ -383,13 +383,9 @@ from utils.cuda_setup import auto_setup, estimate_training_time
 from models.losses import euclidean_loss, relative_count_loss, mae_count, mse_count, rmse_count
 
 def combined_training_loss(y_true, y_pred):
-    if isinstance(y_true, dict):
-        y_true = y_true['density_map']
     return euclidean_loss(y_true, y_pred)
 
 def val_mae(y_true, y_pred):
-    if isinstance(y_true, dict):
-        y_true = y_true['density_map']
     true_count = tf.reduce_sum(y_true, axis=[1, 2, 3])
     pred_count = tf.reduce_sum(y_pred, axis=[1, 2, 3])
     return tf.reduce_mean(tf.abs(pred_count - true_count))
@@ -591,7 +587,12 @@ class SingleScaleTrainer:
         if val_dataset is None:
             val_dataset = test_dataset
             self.log("Using test set for validation")
-        
+        def extract_density_only(x, y):
+            return x, y['density_map']
+
+        train_dataset = train_dataset.map(extract_density_only)
+        val_dataset = val_dataset.map(extract_density_only)
+        test_dataset = test_dataset.map(extract_density_only)
         # Create model
         self.log("Creating model...")
         if CONFIG.EDGE_DEPLOYMENT:
