@@ -625,7 +625,7 @@ class SingleScaleTrainer:
             optimizer.learning_rate.assign(lr)
 
             # Count loss weight schedule — matches dissertation exactly
-            count_weight = 0.1 if epoch >= CONFIG.ADD_COUNT_LOSS_EPOCH else 0.0
+            count_weight = 0.0# if epoch >= CONFIG.ADD_COUNT_LOSS_EPOCH else 0.0
 
             # Training loop
             train_losses = []
@@ -640,7 +640,7 @@ class SingleScaleTrainer:
                         y_batch['count'],
                         tf.reduce_sum(predictions['density_map'], axis=[1, 2, 3])
                     )
-                    total_loss = density_loss + count_weight * count_loss
+                    total_loss = density_loss #+ count_weight * count_loss
                 gradients = tape.gradient(total_loss, model.trainable_variables)
                 optimizer.apply_gradients(zip(gradients, model.trainable_variables))
                 train_losses.append(total_loss.numpy())
