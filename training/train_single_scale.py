@@ -383,34 +383,16 @@ from utils.cuda_setup import auto_setup, estimate_training_time
 from models.losses import euclidean_loss, relative_count_loss, mae_count, mse_count, rmse_count
 
 def combined_training_loss(y_true, y_pred):
-    # Keras 3 passes y_true as raw tensor, y_pred as dict
     if isinstance(y_true, dict):
-        y_true_density = y_true['density_map']
-    else:
-        y_true_density = y_true
-    
-    if isinstance(y_pred, dict):
-        y_pred_density = y_pred['density_map']
-    else:
-        y_pred_density = y_pred
-        
-    return euclidean_loss(y_true_density, y_pred_density)
+        y_true = y_true['density_map']
+    return euclidean_loss(y_true, y_pred)
 
 def val_mae(y_true, y_pred):
     if isinstance(y_true, dict):
-        y_true_density = y_true['density_map']
-    else:
-        y_true_density = y_true
-        
-    if isinstance(y_pred, dict):
-        y_pred_density = y_pred['density_map']
-    else:
-        y_pred_density = y_pred
-        
-    true_count = tf.reduce_sum(y_true_density, axis=[1, 2, 3])
-    pred_count = tf.reduce_sum(y_pred_density, axis=[1, 2, 3])
+        y_true = y_true['density_map']
+    true_count = tf.reduce_sum(y_true, axis=[1, 2, 3])
+    pred_count = tf.reduce_sum(y_pred, axis=[1, 2, 3])
     return tf.reduce_mean(tf.abs(pred_count - true_count))
-
 class SingleScaleTrainer:
     """Trainer for Single-Scale SACNN"""
     
@@ -622,6 +604,8 @@ class SingleScaleTrainer:
             )
         else:
             model = create_single_scale_model(input_shape=(256, 256, 3))
+            density_output = model.output['density_map']
+            model = tf.keras.Model(inputs=model.input, outputs=density_output, name='SingleScaleSACNN_train')
         
         # Count parameters
         param_info = count_parameters(model)
