@@ -553,157 +553,338 @@ class SingleScaleTrainer:
         Returns:
             Trained model and history
         """
-        
-        # Set parameters
         if quick_test:
             epochs = CONFIG.QUICK_TEST_EPOCHS
             self.log(f"Quick test mode: {epochs} epochs")
         else:
             epochs = epochs or CONFIG.EPOCHS
-        
+
         batch_size = batch_size or CONFIG.BATCH_SIZE
-        
+
         self.log(f"Training configuration:")
         self.log(f"  Part: {part}")
         self.log(f"  Epochs: {epochs}")
         self.log(f"  Batch size: {batch_size}")
         self.log(f"  Initial LR: {CONFIG.INITIAL_LR}")
         self.log(f"  Device: {'GPU' if self.gpu_available else 'CPU'}")
-        
-        # Estimate training time
-        num_samples = 400  # Part B training set size
-        # est_time = estimate_training_time(num_samples, batch_size, epochs, self.gpu_available)
-        # self.log(f"  Estimated time: {est_time}")
-        
+
         # Load data
         self.log("Loading datasets...")
         train_dataset, val_dataset, test_dataset = create_train_val_datasets(
             part=part,
             batch_size=batch_size,
-            val_split=0.1  
+            val_split=0.1
         )
-        
-        # If no validation split, use test as validation
         if val_dataset is None:
             val_dataset = test_dataset
             self.log("Using test set for validation")
-        def extract_density_only(x, y):
-            return x, y['density_map']
 
-        train_dataset = train_dataset.map(extract_density_only)
-        val_dataset = val_dataset.map(extract_density_only)
-        test_dataset = test_dataset.map(extract_density_only)
         # Create model
         self.log("Creating model...")
-        if CONFIG.EDGE_DEPLOYMENT:
-            from models.single_scale_edge import create_single_scale_model as create_edge_model
-            model = create_edge_model(
-                input_shape=(256, 256, 3),
-                width_multiplier=CONFIG.WIDTH_MULTIPLIER,
-                use_depthwise=CONFIG.USE_DEPTHWISE,
-                dropout_rate=CONFIG.DROPOUT_RATE
-            )
-        else:
-            model = create_single_scale_model(input_shape=(256, 256, 3))
-            
-        # Count parameters
+        model = create_single_scale_model(input_shape=(256, 256, 3))
+
         param_info = count_parameters(model)
         self.log(f"Model parameters: {param_info['total_params']:,}")
         self.log(f"Model size (Float32): {param_info['float32_size_mb']:.2f} MB")
-        
-        # Compile model
-        self.log("Compiling model...")
-        
-        # Start with only density loss
-        initial_loss_weights = {
-            'density_map': CONFIG.DENSITY_LOSS_WEIGHT,
-            'count': 0.0  # Start with 0
+
+        # Optimizer with weight decay
+        optimizer = tf.keras.optimizers.SGD(
+            learning_rate=CONFIG.INITIAL_LR,
+            momentum=CONFIG.MOMENTUM,
+            weight_decay=5e-4
+        )
+
+        # Save model architecture
+        with open(self.exp_dir / "model_summary.txt", 'w') as f:
+            model.summary(print_fn=lambda x: f.write(x + '\n'))
+
+        # Training state
+        best_val_loss = float('inf')
+        patience_counter = 0
+        patience = 75
+        best_weights = None
+        checkpoint_path = str(self.exp_dir / "best_model.h5")
+        history = {'loss': [], 'val_loss': [], 'val_mae': [], 'lr': []}
+
+        import csv
+        csv_path = str(self.exp_dir / "history.csv")
+        csv_file = open(csv_path, 'w', newline='')
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(['epoch', 'loss', 'val_loss', 'val_mae', 'lr'])
+
+        self.log("Starting training...")
+
+        for epoch in range(epochs):
+
+            # Learning rate schedule
+            lr = CONFIG.INITIAL_LR
+            for threshold in CONFIG.LR_DECAY_EPOCHS:
+                if epoch >= threshold:
+                    lr *= CONFIG.LR_DECAY_FACTOR
+            lr = max(lr, CONFIG.FINAL_LR)
+            optimizer.learning_rate.assign(lr)
+
+            # Count loss weight schedule — matches dissertation exactly
+            count_weight = 0.1 if epoch >= CONFIG.ADD_COUNT_LOSS_EPOCH else 0.0
+
+            # Training loop
+            train_losses = []
+            for x_batch, y_batch in train_dataset:
+                with tf.GradientTape() as tape:
+                    predictions = model(x_batch, training=True)
+                    density_loss = euclidean_loss(
+                        y_batch['density_map'],
+                        predictions['density_map']
+                    )
+                    count_loss = relative_count_loss(
+                        y_batch['count'],
+                        tf.reduce_sum(predictions['density_map'], axis=[1, 2, 3])
+                    )
+                    total_loss = density_loss + count_weight * count_loss
+                gradients = tape.gradient(total_loss, model.trainable_variables)
+                optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+                train_losses.append(total_loss.numpy())
+
+            avg_train_loss = np.mean(train_losses)
+
+            # Validation loop
+            val_losses = []
+            val_maes = []
+            for x_batch, y_batch in val_dataset:
+                predictions = model(x_batch, training=False)
+                density_loss = euclidean_loss(
+                    y_batch['density_map'],
+                    predictions['density_map']
+                )
+                count_loss = relative_count_loss(
+                    y_batch['count'],
+                    tf.reduce_sum(predictions['density_map'], axis=[1, 2, 3])
+                )
+                val_total_loss = density_loss + count_weight * count_loss
+                val_losses.append(val_total_loss.numpy())
+
+                true_count = tf.reduce_sum(y_batch['density_map'], axis=[1, 2, 3])
+                pred_count = tf.reduce_sum(predictions['density_map'], axis=[1, 2, 3])
+                mae = tf.reduce_mean(tf.abs(pred_count - true_count))
+                val_maes.append(mae.numpy())
+
+            avg_val_loss = np.mean(val_losses)
+            avg_val_mae = np.mean(val_maes)
+
+            # Logging
+            history['loss'].append(avg_train_loss)
+            history['val_loss'].append(avg_val_loss)
+            history['val_mae'].append(avg_val_mae)
+            history['lr'].append(lr)
+            csv_writer.writerow([epoch + 1, avg_train_loss, avg_val_loss, avg_val_mae, lr])
+            csv_file.flush()
+
+            print(f"Epoch {epoch + 1}/{epochs} - lr: {lr:.2e} - loss: {avg_train_loss:.4f} - val_loss: {avg_val_loss:.4f} - val_mae: {avg_val_mae:.4f}")
+
+            # Checkpoint
+            if avg_val_loss < best_val_loss:
+                print(f"  val_loss improved from {best_val_loss:.5f} to {avg_val_loss:.5f}, saving model")
+                best_val_loss = avg_val_loss
+                best_weights = model.get_weights()
+                model.save(checkpoint_path)
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                print(f"  val_loss did not improve from {best_val_loss:.5f} ({patience_counter}/{patience})")
+
+            # Early stopping
+            if patience_counter >= patience:
+                print(f"Early stopping at epoch {epoch + 1}")
+                break
+
+        csv_file.close()
+
+        # Restore best weights
+        if best_weights is not None:
+            model.set_weights(best_weights)
+            self.log("Restored best weights")
+
+        # Save final model
+        final_model_path = self.exp_dir / "final_model.h5"
+        model.save(str(final_model_path))
+        self.log(f"Model saved to {final_model_path}")
+
+        # Evaluate on test set
+        self.log("\nEvaluating on test set...")
+        test_maes = []
+        for x_batch, y_batch in test_dataset:
+            predictions = model(x_batch, training=False)
+            true_count = tf.reduce_sum(y_batch['density_map'], axis=[1, 2, 3])
+            pred_count = tf.reduce_sum(predictions['density_map'], axis=[1, 2, 3])
+            mae = tf.reduce_mean(tf.abs(pred_count - true_count))
+            test_maes.append(mae.numpy())
+
+        final_mae = np.mean(test_maes)
+        self.log(f"\nFinal test MAE: {final_mae:.2f}")
+        self.log(f"Target MAE: {CONFIG.PAPER_TARGETS.get(part, CONFIG.PAPER_TARGETS['B'])['MAE']:.1f}")
+
+        results = {
+            'experiment': self.exp_name,
+            'part': part,
+            'final_test_mae': float(final_mae),
+            'best_val_loss': float(best_val_loss),
+            'target_mae': CONFIG.PAPER_TARGETS.get(part, CONFIG.PAPER_TARGETS['B'])['MAE'],
         }
-        model.compile(
-    optimizer=tf.keras.optimizers.SGD(
-        learning_rate=CONFIG.INITIAL_LR,
-        momentum=CONFIG.MOMENTUM
-    ),
-    loss=combined_training_loss,
-    metrics=[val_mae]
-)
- 
+        with open(self.exp_dir / "results.json", 'w') as f:
+            json.dump(results, f, indent=2)
+
+        return model, history
+        
+        # Set parameters
+#         if quick_test:
+#             epochs = CONFIG.QUICK_TEST_EPOCHS
+#             self.log(f"Quick test mode: {epochs} epochs")
+#         else:
+#             epochs = epochs or CONFIG.EPOCHS
+        
+#         batch_size = batch_size or CONFIG.BATCH_SIZE
+        
+#         self.log(f"Training configuration:")
+#         self.log(f"  Part: {part}")
+#         self.log(f"  Epochs: {epochs}")
+#         self.log(f"  Batch size: {batch_size}")
+#         self.log(f"  Initial LR: {CONFIG.INITIAL_LR}")
+#         self.log(f"  Device: {'GPU' if self.gpu_available else 'CPU'}")
+        
+#         # Estimate training time
+#         num_samples = 400  # Part B training set size
+#         # est_time = estimate_training_time(num_samples, batch_size, epochs, self.gpu_available)
+#         # self.log(f"  Estimated time: {est_time}")
+        
+#         # Load data
+#         self.log("Loading datasets...")
+#         train_dataset, val_dataset, test_dataset = create_train_val_datasets(
+#             part=part,
+#             batch_size=batch_size,
+#             val_split=0.1  
+#         )
+        
+#         # If no validation split, use test as validation
+#         if val_dataset is None:
+#             val_dataset = test_dataset
+#             self.log("Using test set for validation")
+#         def extract_density_only(x, y):
+#             return x, y['density_map']
+
+#         train_dataset = train_dataset.map(extract_density_only)
+#         val_dataset = val_dataset.map(extract_density_only)
+#         test_dataset = test_dataset.map(extract_density_only)
+#         # Create model
+#         self.log("Creating model...")
+#         if CONFIG.EDGE_DEPLOYMENT:
+#             from models.single_scale_edge import create_single_scale_model as create_edge_model
+#             model = create_edge_model(
+#                 input_shape=(256, 256, 3),
+#                 width_multiplier=CONFIG.WIDTH_MULTIPLIER,
+#                 use_depthwise=CONFIG.USE_DEPTHWISE,
+#                 dropout_rate=CONFIG.DROPOUT_RATE
+#             )
+#         else:
+#             model = create_single_scale_model(input_shape=(256, 256, 3))
+            
+#         # Count parameters
+#         param_info = count_parameters(model)
+#         self.log(f"Model parameters: {param_info['total_params']:,}")
+#         self.log(f"Model size (Float32): {param_info['float32_size_mb']:.2f} MB")
+        
+#         # Compile model
+#         self.log("Compiling model...")
+        
+#         # Start with only density loss
+#         initial_loss_weights = {
+#             'density_map': CONFIG.DENSITY_LOSS_WEIGHT,
+#             'count': 0.0  # Start with 0
+#         }
 #         model.compile(
 #     optimizer=tf.keras.optimizers.SGD(
 #         learning_rate=CONFIG.INITIAL_LR,
 #         momentum=CONFIG.MOMENTUM
 #     ),
-#     loss={
-#         'density_map': euclidean_loss,
-#         'count': relative_count_loss
-#     },
-#     loss_weights={
-#         'density_map': 1.0,
-#         'count': 0.0
-#     },
-#     metrics={
-#         'density_map': [mse_count],
-#         'count': [mae_count, mse_count, rmse_count]
-#     }
+#     loss=combined_training_loss,
+#     metrics=[val_mae]
 # )
+ 
+# #         model.compile(
+# #     optimizer=tf.keras.optimizers.SGD(
+# #         learning_rate=CONFIG.INITIAL_LR,
+# #         momentum=CONFIG.MOMENTUM
+# #     ),
+# #     loss={
+# #         'density_map': euclidean_loss,
+# #         'count': relative_count_loss
+# #     },
+# #     loss_weights={
+# #         'density_map': 1.0,
+# #         'count': 0.0
+# #     },
+# #     metrics={
+# #         'density_map': [mse_count],
+# #         'count': [mae_count, mse_count, rmse_count]
+# #     }
+# # )
 
         
-        # Save model architecture
-        with open(self.exp_dir / "model_summary.txt", 'w') as f:
-            model.summary(print_fn=lambda x: f.write(x + '\n'))
+#         # Save model architecture
+#         with open(self.exp_dir / "model_summary.txt", 'w') as f:
+#             model.summary(print_fn=lambda x: f.write(x + '\n'))
         
-        # Create callbacks
-        callbacks = self.create_callbacks(part)
+#         # Create callbacks
+#         callbacks = self.create_callbacks(part)
         
-        # Train model
-        self.log("Starting training...")
-        target_mae = CONFIG.PAPER_TARGETS.get(part, CONFIG.PAPER_TARGETS['B'])['MAE']
-        self.log(f"Target MAE: {target_mae}")
+#         # Train model
+#         self.log("Starting training...")
+#         target_mae = CONFIG.PAPER_TARGETS.get(part, CONFIG.PAPER_TARGETS['B'])['MAE']
+#         self.log(f"Target MAE: {target_mae}")
         
-        history = model.fit(
-            train_dataset,
-            validation_data=val_dataset,
-            epochs=epochs,
-            callbacks=callbacks,
-            verbose=1
-        )
+#         history = model.fit(
+#             train_dataset,
+#             validation_data=val_dataset,
+#             epochs=epochs,
+#             callbacks=callbacks,
+#             verbose=1
+#         )
         
-        # Save final model
-        final_model_path = self.exp_dir / "final_model.h5"
-        model.save(str(final_model_path))
-        self.log(f"Model saved to {final_model_path}")
+#         # Save final model
+#         final_model_path = self.exp_dir / "final_model.h5"
+#         model.save(str(final_model_path))
+#         self.log(f"Model saved to {final_model_path}")
         
-        # Evaluate on test set
-        self.log("\nEvaluating on test set...")
-        test_results = model.evaluate(test_dataset, verbose=1)
+#         # Evaluate on test set
+#         self.log("\nEvaluating on test set...")
+#         test_results = model.evaluate(test_dataset, verbose=1)
         
-        # Save results
-        results = {
-            'experiment': self.exp_name,
-            'part': part,
-            'epochs': epochs,
-            'final_test_results': dict(zip(model.metrics_names, test_results)),
-            'target_mae': CONFIG.PAPER_TARGETS.get(part, CONFIG.PAPER_TARGETS['B'])['MAE'],
-        }
+#         # Save results
+#         results = {
+#             'experiment': self.exp_name,
+#             'part': part,
+#             'epochs': epochs,
+#             'final_test_results': dict(zip(model.metrics_names, test_results)),
+#             'target_mae': CONFIG.PAPER_TARGETS.get(part, CONFIG.PAPER_TARGETS['B'])['MAE'],
+#         }
         
-        with open(self.exp_dir / "results.json", 'w') as f:
-            json.dump(results, f, indent=2)
+#         with open(self.exp_dir / "results.json", 'w') as f:
+#             json.dump(results, f, indent=2)
         
  
-        mae_value = None
-        for i, name in enumerate(model.metrics_names):
-            if 'count' in name and 'mae' in name.lower():
-                mae_value = test_results[i]
-                break
+#         mae_value = None
+#         for i, name in enumerate(model.metrics_names):
+#             if 'count' in name and 'mae' in name.lower():
+#                 mae_value = test_results[i]
+#                 break
         
-        if mae_value is not None:
-            self.log(f"\nFinal test MAE: {mae_value:.2f}")
-        else:
-            self.log(f"\nTest results: {dict(zip(model.metrics_names, test_results))}")
+#         if mae_value is not None:
+#             self.log(f"\nFinal test MAE: {mae_value:.2f}")
+#         else:
+#             self.log(f"\nTest results: {dict(zip(model.metrics_names, test_results))}")
         
-        self.log(f"Target MAE: {CONFIG.PAPER_TARGETS.get(part, CONFIG.PAPER_TARGETS['B'])['MAE']:.1f}")
+#         self.log(f"Target MAE: {CONFIG.PAPER_TARGETS.get(part, CONFIG.PAPER_TARGETS['B'])['MAE']:.1f}")
         
-        return model, history
+#         return model, history
     
     
 
