@@ -383,8 +383,7 @@ from utils.cuda_setup import auto_setup, estimate_training_time
 from models.losses import euclidean_loss, relative_count_loss, mae_count, mse_count, rmse_count
 
 def combined_training_loss(y_true, y_pred):
-    density_loss = euclidean_loss(y_true['density_map'], y_pred['density_map'])
-    return density_loss
+    return euclidean_loss(y_true['density_map'], y_pred['density_map'])
 
 def val_mae(y_true, y_pred):
     true_count = tf.reduce_sum(y_true['density_map'], axis=[1, 2, 3])
@@ -631,8 +630,9 @@ class SingleScaleTrainer:
         learning_rate=CONFIG.INITIAL_LR,
         momentum=CONFIG.MOMENTUM
     ),
-    loss=combined_training_loss,
-    metrics=[val_mae]
+    loss={'density_map': combined_training_loss},
+    loss_weights={'density_map': 1.0},
+    metrics={'density_map': [val_mae]}
 )
 #         model.compile(
 #     optimizer=tf.keras.optimizers.SGD(
