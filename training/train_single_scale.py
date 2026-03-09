@@ -621,19 +621,27 @@ class SingleScaleTrainer:
         learning_rate=CONFIG.INITIAL_LR,
         momentum=CONFIG.MOMENTUM
     ),
-    loss={
-        'density_map': euclidean_loss,
-        'count': relative_count_loss
-    },
-    loss_weights={
-        'density_map': 1.0,
-        'count': 0.0
-    },
-    metrics={
-        'density_map': [mse_count],
-        'count': [mae_count, mse_count, rmse_count]
-    }
+    loss=combined_training_loss,
+    metrics=[val_mae]
 )
+#         model.compile(
+#     optimizer=tf.keras.optimizers.SGD(
+#         learning_rate=CONFIG.INITIAL_LR,
+#         momentum=CONFIG.MOMENTUM
+#     ),
+#     loss={
+#         'density_map': euclidean_loss,
+#         'count': relative_count_loss
+#     },
+#     loss_weights={
+#         'density_map': 1.0,
+#         'count': 0.0
+#     },
+#     metrics={
+#         'density_map': [mse_count],
+#         'count': [mae_count, mse_count, rmse_count]
+#     }
+# )
 
         #for kaggle
 #         model.compile(
