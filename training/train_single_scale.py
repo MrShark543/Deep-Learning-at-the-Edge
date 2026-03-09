@@ -630,13 +630,6 @@ class SingleScaleTrainer:
     loss_weights={
         'density_map': CONFIG.DENSITY_LOSS_WEIGHT,
         'count': 0.0
-    },
-    metrics={
-        'density_map': [tf.keras.metrics.MeanSquaredError(name='mse')],
-        'count': [
-            tf.keras.metrics.MeanAbsoluteError(name='mae'),
-            tf.keras.metrics.MeanSquaredError(name='mse')
-        ]
     }
 )
         
