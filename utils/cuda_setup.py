@@ -21,26 +21,45 @@ def setup_gpu(memory_growth=True):
     
     gpus = tf.config.list_physical_devices('GPU')
     
+    # if gpus:
+    #     try:
+    #         # Enable memory growth for the GPU
+    #         tf.config.experimental.set_memory_growth(gpus[0], memory_growth)
+            
+    #         # Test GPU availability
+    #         with tf.device('/GPU:0'):
+    #             test = tf.constant([[1.0, 2.0], [3.0, 4.0]])
+    #             test = tf.matmul(test, test)
+            
+    #         print(f"GPU setup successful: {gpus[0].name}")
+    #         return True
+            
+    #     except RuntimeError as e:
+    #         print(f"GPU initialization failed: {e}")
+    #         print("Falling back to CPU")
+    #         return False
+    # else:
+    #     print("No GPU detected - using CPU")
+    #     return False
+
     if gpus:
         try:
-            # Enable memory growth for the GPU
-            tf.config.experimental.set_memory_growth(gpus[0], memory_growth)
+            # Enable memory growth for ALL GPUs
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, memory_growth)
             
             # Test GPU availability
             with tf.device('/GPU:0'):
                 test = tf.constant([[1.0, 2.0], [3.0, 4.0]])
                 test = tf.matmul(test, test)
             
-            print(f"GPU setup successful: {gpus[0].name}")
+            print(f"GPU setup successful: {len(gpus)} GPU(s) detected")
             return True
             
         except RuntimeError as e:
             print(f"GPU initialization failed: {e}")
             print("Falling back to CPU")
             return False
-    else:
-        print("No GPU detected - using CPU")
-        return False
 
 
 def check_gpu_info():
