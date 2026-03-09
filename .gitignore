@@ -1,100 +1,17 @@
-# -----------------------------------------------------------------------
 # Dataset
-# -----------------------------------------------------------------------
-data/
 datasets/
-*.h5
-*.hdf5
-
-# ShanghaiTech Part B raw and processed files
 ShanghaiTech/
-shanghaitech/
-train_data/
-test_data/
-ground_truth/
-density_maps/
 
-# -----------------------------------------------------------------------
 # Model outputs
-# -----------------------------------------------------------------------
-models/
 saved_models/
-checkpoints/
-*.keras
-*.pb
-*.tflite
-*.onnx
-*.weights
-*.ckpt
-*.ckpt.index
-*.ckpt.data-*
-
-# TFLite conversion artefacts
-tflite_models/
-quantized_models/
 pruned_models/
+quantization_results/
+*.h5
+*.tflite
 
-# -----------------------------------------------------------------------
-# Training outputs
-# -----------------------------------------------------------------------
-logs/
-runs/
-outputs/
-results/
-figures/
-plots/
-*.png
-*.jpg
-*.jpeg
-*.csv
-
-# -----------------------------------------------------------------------
-# Python
-# -----------------------------------------------------------------------
+# Python cache
 __pycache__/
-*.py[cod]
-*$py.class
-*.pyo
-.Python
-build/
-dist/
-*.egg-info/
-.eggs/
-pip-wheel-metadata/
+*.pyc
 
-# Virtual environments
-venv/
-env/
-.venv/
-.env/
-
-# Jupyter / Kaggle notebooks (keep .ipynb if you want, remove if not)
-.ipynb_checkpoints/
-*.ipynb
-
-# -----------------------------------------------------------------------
 # OS
-# -----------------------------------------------------------------------
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-Thumbs.db
-ehthumbs.db
-desktop.ini
-
-# -----------------------------------------------------------------------
-# VS Code
-# -----------------------------------------------------------------------
-.vscode/
-*.code-workspace
-
-# -----------------------------------------------------------------------
-# Miscellaneous
-# -----------------------------------------------------------------------
-*.log
-*.tmp
-*.bak
-*.swp
-~$*
