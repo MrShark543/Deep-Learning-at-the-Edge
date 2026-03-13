@@ -724,7 +724,7 @@ class StructuredPruner:
         else:
             density_map = tf.keras.layers.Conv2D(1, 1, padding='same', name='density_map')(x)
         
-        count = tf.reduce_sum(density_map, axis=[1, 2, 3], keepdims=True)
+        count = tf.keras.layers.Lambda(lambda x: tf.reduce_sum(x, axis=[1, 2, 3], keepdims=True))(density_map)
         
         return tf.keras.Model(
             inputs=inputs,
