@@ -805,7 +805,12 @@ class StructuredPruner:
     
     def fine_tune_model(self, model, train_dataset, val_dataset, epochs=100, initial_lr=1e-4, sparsity_label=""):
         """Fine-tune the pruned model using custom training loop for Keras 3 compatibility"""
-        
+        strategy = tf.distribute.MirroredStrategy()
+        with strategy.scope():
+            optimizer = tf.keras.optimizers.SGD(
+                learning_rate=initial_lr,
+                momentum=0.9
+            )
         optimizer = tf.keras.optimizers.SGD(
             learning_rate=initial_lr,
             momentum=0.9

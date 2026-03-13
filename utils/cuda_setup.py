@@ -142,7 +142,18 @@ def auto_setup():
     Returns:
         bool: True if GPU is available
     """
-
+    import tensorflow as tf
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            print(f"GPU setup successful: {len(gpus)} GPU(s) available")
+            return True
+        except RuntimeError as e:
+            print(f"GPU already initialized, continuing: {e}")
+            return True
+    return False
     
     # Setup GPU
     gpu_available = setup_gpu()
