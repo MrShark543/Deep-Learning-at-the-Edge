@@ -54,7 +54,7 @@ class SingleScaleConfig:
     COUNT_LOSS_WEIGHT = 0.1
 
     # When to add count loss - LATER
-    ADD_COUNT_LOSS_EPOCH = 100  # CHANGED from 50
+    ADD_COUNT_LOSS_EPOCH = 200  # CHANGED from 50
 
 
     # ============= Edge Deployment Configuration =============
