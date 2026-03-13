@@ -5,7 +5,6 @@ Structured Magnitude Pruning for SingleScaleSACNN with comprehensive analysis
 """
 
 import tensorflow as tf
-import tensorflow_model_optimization as tfmot
 import numpy as np
 from pathlib import Path
 import sys
