@@ -788,12 +788,8 @@ class StructuredPruner:
             images, targets = batch
             predictions = model(images, training=False)
             
-            if isinstance(predictions, dict):
-                pred_count = predictions['count'].numpy().flatten()
-            elif isinstance(predictions, tuple):
-                pred_count = predictions[1].numpy().flatten()
-            else:
-                pred_count = predictions.numpy().flatten()
+            pred_density = predictions['density_map']
+            pred_count = tf.reduce_sum(pred_density, axis=[1, 2, 3]).numpy().flatten()
             
             true_count = targets['count'].numpy().flatten()
             
@@ -809,49 +805,77 @@ class StructuredPruner:
         return float(mae), float(mse)
     
     def fine_tune_model(self, model, train_dataset, val_dataset, epochs=100, initial_lr=1e-4, sparsity_label=""):
-        """Fine-tune the pruned model with better training strategy"""
+        """Fine-tune the pruned model using custom training loop for Keras 3 compatibility"""
         
-        losses = get_loss_functions()
-        metrics = get_metrics()
-        
-        model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=initial_lr),
-            loss=losses,
-            loss_weights={
-                'density_map': CONFIG.DENSITY_LOSS_WEIGHT,
-                'count': CONFIG.COUNT_LOSS_WEIGHT
-            },
-            metrics=metrics
+        optimizer = tf.keras.optimizers.SGD(
+            learning_rate=initial_lr,
+            momentum=0.9
         )
         
+        best_val_loss = float('inf')
+        best_weights = None
+        patience_counter = 0
+        patience = 15
         history_list = []
         
-        callbacks = [
-            tf.keras.callbacks.EarlyStopping(
-                monitor='val_loss',
-                patience=15,
-                restore_best_weights=True,
-                verbose=1
-            ),
-            tf.keras.callbacks.ReduceLROnPlateau(
-                monitor='val_loss',
-                factor=0.5,
-                patience=7,
-                min_lr=1e-7,
-                verbose=1
-            ),
-            tf.keras.callbacks.LambdaCallback(
-                on_epoch_end=lambda epoch, logs: history_list.append(logs)
-            )
-        ]
+        for epoch in range(epochs):
+            # Training loop
+            train_losses = []
+            for x_batch, y_batch in train_dataset:
+                with tf.GradientTape() as tape:
+                    predictions = model(x_batch, training=True)
+                    density_loss = euclidean_loss(
+                        y_batch['density_map'],
+                        predictions['density_map']
+                    )
+                    total_loss = density_loss
+                gradients = tape.gradient(total_loss, model.trainable_variables)
+                optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+                train_losses.append(total_loss.numpy())
+            
+            avg_train_loss = np.mean(train_losses)
+            
+            # Validation loop
+            val_losses = []
+            for x_batch, y_batch in val_dataset:
+                predictions = model(x_batch, training=False)
+                density_loss = euclidean_loss(
+                    y_batch['density_map'],
+                    predictions['density_map']
+                )
+                val_losses.append(density_loss.numpy())
+            
+            avg_val_loss = np.mean(val_losses)
+            
+            epoch_logs = {
+                'loss': avg_train_loss,
+                'val_loss': avg_val_loss
+            }
+            history_list.append(epoch_logs)
+            
+            print(f"  Fine-tune epoch {epoch + 1}/{epochs} - loss: {avg_train_loss:.4f} - val_loss: {avg_val_loss:.4f}")
+            
+            # Early stopping
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                best_weights = model.get_weights()
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                if patience_counter >= patience:
+                    print(f"  Early stopping at epoch {epoch + 1}")
+                    break
+            
+            # ReduceLROnPlateau equivalent
+            if patience_counter == 7:
+                current_lr = float(optimizer.learning_rate)
+                new_lr = max(current_lr * 0.5, 1e-7)
+                optimizer.learning_rate.assign(new_lr)
+                print(f"  Reducing LR to {new_lr:.2e}")
         
-        history = model.fit(
-            train_dataset,
-            epochs=epochs,
-            validation_data=val_dataset,
-            callbacks=callbacks,
-            verbose=1
-        )
+        # Restore best weights
+        if best_weights is not None:
+            model.set_weights(best_weights)
         
         if sparsity_label:
             self.fine_tune_histories[sparsity_label] = history_list
