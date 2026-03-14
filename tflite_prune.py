@@ -25,6 +25,12 @@ from models.single_scale_vgg import SingleScaleSACNN, create_single_scale_model
 from models.losses import get_loss_functions, get_metrics, euclidean_loss, relative_count_loss, mae_count, mse_count, rmse_count
 from data.simple_loader import create_train_val_datasets
 
+class SumLayer(tf.keras.layers.Layer):
+    def call(self, x):
+        return tf.reduce_sum(x, axis=[1, 2, 3], keepdims=True)
+    
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], 1, 1, 1)
 
 class StructuredPruner:
     """Enhanced Structured Pruning with global sparsity control and comprehensive analysis"""
@@ -724,7 +730,8 @@ class StructuredPruner:
         else:
             density_map = tf.keras.layers.Conv2D(1, 1, padding='same', name='density_map')(x)
         
-        count = tf.keras.layers.Lambda(lambda x: tf.reduce_sum(x, axis=[1, 2, 3], keepdims=True))(density_map)
+        # count = tf.keras.layers.Lambda(lambda x: tf.reduce_sum(x, axis=[1, 2, 3], keepdims=True))(density_map)
+        count = SumLayer(name='count')(density_map)
         
         return tf.keras.Model(
             inputs=inputs,
