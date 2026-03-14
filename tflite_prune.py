@@ -896,14 +896,10 @@ class StructuredPruner:
         best_val_loss = float('inf')
         best_weights = None
         patience_counter = 0
-        patience = 15
+        patience = 25
         history_list = []
         
-        best_val_loss = float('inf')
-        best_weights = None
-        patience_counter = 0
-        patience = 15
-        history_list = []
+        
         
         for epoch in range(epochs):
             # Training loop
@@ -1024,7 +1020,7 @@ class StructuredPruner:
             print("\nFine-tuning pruned model...")
             pruned_model = self.fine_tune_model(
                 pruned_model, train_dataset, val_dataset, 
-                epochs=100, initial_lr=CONFIG.INITIAL_LR * 0.1,
+                epochs=100, initial_lr=CONFIG.INITIAL_LR ,
                 sparsity_label=f"{int(sparsity*100)}pct"
             )
             
