@@ -150,8 +150,7 @@ class StructuredPruner:
                 layer_weight = layer_importance_weights.get(layer_name, 1.0)
                 
                 for i in range(num_filters):
-                    # L2 norm weighted by layer importance
-                    importance = np.linalg.norm(weights[..., i]) * layer_weight
+                    importance = np.linalg.norm(weights[..., i])
                     filter_info.append((layer_name, i, importance))
         
         return filter_info, layer_importance_weights
