@@ -288,55 +288,135 @@ class StructuredPruner:
         total_importance = np.sum(scores)
         self.progressive_data['total_importance'] = total_importance
     
+    # def create_pruned_model_structured(self, original_model, pruning_percentage=0.5, calibration_dataset=None):
+    #     """
+    #     Create a new model with fewer filters based on GLOBAL magnitude pruning
+    #     Enhanced with calibration-based importance calculation
+    #     """
+        
+    #     input_shape = (CONFIG.INPUT_HEIGHT, CONFIG.INPUT_WIDTH, CONFIG.INPUT_CHANNELS)
+    #     inputs = tf.keras.layers.Input(shape=input_shape, name='input_image')
+        
+    #     # Get weights from original model
+    #     original_weights = self._extract_weights(original_model)
+        
+    #     if len(original_weights) < 10:
+    #         raise ValueError(f"Insufficient weights found ({len(original_weights)} layers). Expected at least 10 conv layers.")
+        
+    #     # Calculate filter importance with calibration
+    #     filter_info, layer_importance_weights = self.calculate_filter_importance_with_calibration(
+    #         original_model, original_weights, calibration_dataset, num_samples=50
+    #     )
+        
+    #     # Visualize filter importance
+    #     self.visualize_filter_importance(filter_info, layer_importance_weights, pruning_percentage)
+        
+    #     # Sort filters globally by importance
+    #     scores = np.array([score for _, _, score in filter_info])
+    #     sorted_indices = np.argsort(scores)
+        
+    #     # Calculate how many filters to remove globally
+    #     total_filters = len(filter_info)
+    #     filters_to_remove = int(total_filters * pruning_percentage)
+    #     filters_to_keep_count = total_filters - filters_to_remove
+        
+    #     # Calculate pruning threshold
+    #     if filters_to_keep_count > 0:
+    #         threshold_idx = sorted_indices[-filters_to_keep_count]
+    #         pruning_threshold = scores[threshold_idx]
+    #     else:
+    #         pruning_threshold = np.max(scores)
+        
+    #     # Calculate total importance retained
+    #     filters_to_keep_global = sorted_indices[-filters_to_keep_count:] if filters_to_keep_count > 0 else []
+    #     importance_retained = np.sum(scores[filters_to_keep_global]) / np.sum(scores) * 100 if len(scores) > 0 else 0
+        
+    #     self.progressive_data['thresholds'].append(pruning_threshold)
+    #     self.progressive_data['importance_retained'].append(importance_retained)
+    #     self.progressive_data['filters_retained'].append(filters_to_keep_count / total_filters * 100)
+    #     self.progressive_data['sparsity_levels'].append(pruning_percentage * 100)
+        
+    #     print(f"\nGlobal pruning statistics:")
+    #     print(f"Total filters: {total_filters}")
+    #     print(f"Filters to remove: {filters_to_remove}")
+    #     print(f"Filters to keep: {filters_to_keep_count}")
+    #     print(f"Actual global sparsity: {filters_to_remove/total_filters:.1%}")
+    #     print(f"Pruning threshold: {pruning_threshold:.4f}")
+    #     print(f"Importance retained: {importance_retained:.1f}%")
+    #     print(f"Calibration samples used: {self.calibration_samples_used}")
+        
+    #     # Convert back to per-layer structure
+    #     layers_to_prune = ['conv1_1', 'conv1_2', 'conv2_1', 'conv2_2', 
+    #                       'conv3_1', 'conv3_2', 'conv3_3', 'conv4_1', 'conv4_2', 'conv4_3',
+    #                       'p_conv1', 'p_conv2']
+        
+    #     filters_to_keep = {layer: [] for layer in layers_to_prune}
+    #     for idx in filters_to_keep_global:
+    #         layer_name, filter_idx, _ = filter_info[idx]
+    #         filters_to_keep[layer_name].append(filter_idx)
+        
+    #     # Ensure minimum filters per layer
+    #     new_filter_counts = self._ensure_minimum_filters(filters_to_keep, original_weights, layers_to_prune)
+        
+    #     # Visualize pruning distribution
+    #     self.visualize_layer_pruning_heatmap(original_weights, filters_to_keep, pruning_percentage)
+        
+    #     # Build pruned model
+    #     pruned_model = self._build_pruned_model(inputs, original_weights, filters_to_keep, new_filter_counts)
+        
+    #     return pruned_model
     def create_pruned_model_structured(self, original_model, pruning_percentage=0.5, calibration_dataset=None):
         """
-        Create a new model with fewer filters based on GLOBAL magnitude pruning
-        Enhanced with calibration-based importance calculation
+        Create a new model with fewer filters based on per-layer proportional pruning
         """
-        
         input_shape = (CONFIG.INPUT_HEIGHT, CONFIG.INPUT_WIDTH, CONFIG.INPUT_CHANNELS)
         inputs = tf.keras.layers.Input(shape=input_shape, name='input_image')
-        
+
         # Get weights from original model
         original_weights = self._extract_weights(original_model)
-        
+
         if len(original_weights) < 10:
             raise ValueError(f"Insufficient weights found ({len(original_weights)} layers). Expected at least 10 conv layers.")
-        
+
         # Calculate filter importance with calibration
         filter_info, layer_importance_weights = self.calculate_filter_importance_with_calibration(
             original_model, original_weights, calibration_dataset, num_samples=50
         )
-        
+
         # Visualize filter importance
         self.visualize_filter_importance(filter_info, layer_importance_weights, pruning_percentage)
-        
-        # Sort filters globally by importance
+
+        # Per-layer proportional pruning
+        layers_to_prune = ['conv1_1', 'conv1_2', 'conv2_1', 'conv2_2',
+                        'conv3_1', 'conv3_2', 'conv3_3', 'conv4_1', 'conv4_2', 'conv4_3',
+                        'p_conv1', 'p_conv2']
+
+        filters_to_keep = {layer: [] for layer in layers_to_prune}
+
+        for layer_name in layers_to_prune:
+            layer_filter_indices = [(fi, score) for ln, fi, score in filter_info if ln == layer_name]
+            num_layer_filters = len(layer_filter_indices)
+            num_to_keep = max(1, int(num_layer_filters * (1 - pruning_percentage)))
+            sorted_layer = sorted(layer_filter_indices, key=lambda x: x[1], reverse=True)
+            kept = [fi for fi, score in sorted_layer[:num_to_keep]]
+            filters_to_keep[layer_name] = sorted(kept)
+
+        # Calculate global stats for reporting
         scores = np.array([score for _, _, score in filter_info])
         sorted_indices = np.argsort(scores)
-        
-        # Calculate how many filters to remove globally
         total_filters = len(filter_info)
-        filters_to_remove = int(total_filters * pruning_percentage)
-        filters_to_keep_count = total_filters - filters_to_remove
-        
-        # Calculate pruning threshold
-        if filters_to_keep_count > 0:
-            threshold_idx = sorted_indices[-filters_to_keep_count]
-            pruning_threshold = scores[threshold_idx]
-        else:
-            pruning_threshold = np.max(scores)
-        
-        # Calculate total importance retained
-        filters_to_keep_global = sorted_indices[-filters_to_keep_count:] if filters_to_keep_count > 0 else []
+        filters_to_keep_count = sum(len(v) for v in filters_to_keep.values())
+        filters_to_remove = total_filters - filters_to_keep_count
+        filters_to_keep_global = sorted_indices[filters_to_remove:] if filters_to_remove < total_filters else sorted_indices
+        pruning_threshold = scores[sorted_indices[filters_to_remove]] if filters_to_remove < total_filters else 0.0
         importance_retained = np.sum(scores[filters_to_keep_global]) / np.sum(scores) * 100 if len(scores) > 0 else 0
-        
+
         self.progressive_data['thresholds'].append(pruning_threshold)
         self.progressive_data['importance_retained'].append(importance_retained)
         self.progressive_data['filters_retained'].append(filters_to_keep_count / total_filters * 100)
         self.progressive_data['sparsity_levels'].append(pruning_percentage * 100)
-        
-        print(f"\nGlobal pruning statistics:")
+
+        print(f"\nPer-layer pruning statistics:")
         print(f"Total filters: {total_filters}")
         print(f"Filters to remove: {filters_to_remove}")
         print(f"Filters to keep: {filters_to_keep_count}")
@@ -344,26 +424,23 @@ class StructuredPruner:
         print(f"Pruning threshold: {pruning_threshold:.4f}")
         print(f"Importance retained: {importance_retained:.1f}%")
         print(f"Calibration samples used: {self.calibration_samples_used}")
-        
-        # Convert back to per-layer structure
-        layers_to_prune = ['conv1_1', 'conv1_2', 'conv2_1', 'conv2_2', 
-                          'conv3_1', 'conv3_2', 'conv3_3', 'conv4_1', 'conv4_2', 'conv4_3',
-                          'p_conv1', 'p_conv2']
-        
-        filters_to_keep = {layer: [] for layer in layers_to_prune}
-        for idx in filters_to_keep_global:
-            layer_name, filter_idx, _ = filter_info[idx]
-            filters_to_keep[layer_name].append(filter_idx)
-        
-        # Ensure minimum filters per layer
-        new_filter_counts = self._ensure_minimum_filters(filters_to_keep, original_weights, layers_to_prune)
-        
+
+        # New filter counts from per-layer pruning
+        new_filter_counts = {layer: len(filters_to_keep[layer]) for layer in layers_to_prune if layer in filters_to_keep}
+
+        # Print per-layer breakdown
+        for layer_name in layers_to_prune:
+            if layer_name in original_weights:
+                orig = original_weights[layer_name][0].shape[-1]
+                kept = len(filters_to_keep[layer_name])
+                print(f"{layer_name}: Keeping {kept}/{orig} filters ({kept/orig:.1%})")
+
         # Visualize pruning distribution
         self.visualize_layer_pruning_heatmap(original_weights, filters_to_keep, pruning_percentage)
-        
+
         # Build pruned model
         pruned_model = self._build_pruned_model(inputs, original_weights, filters_to_keep, new_filter_counts)
-        
+
         return pruned_model
     
     def visualize_layer_pruning_heatmap(self, original_weights, filters_to_keep, sparsity_level):
