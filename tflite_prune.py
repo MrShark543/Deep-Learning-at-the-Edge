@@ -661,12 +661,12 @@ class StructuredPruner:
         new_filter_counts = {}
         
         min_filters = {
-            'conv1_1': 16, 'conv1_2': 16,
-            'conv2_1': 32, 'conv2_2': 32,
-            'conv3_1': 64, 'conv3_2': 64, 'conv3_3': 64,
-            'conv4_1': 64, 'conv4_2': 64, 'conv4_3': 64,
-            'p_conv1': 32, 'p_conv2': 16
-        }
+    'conv1_1': 4, 'conv1_2': 8,
+    'conv2_1': 16, 'conv2_2': 16,
+    'conv3_1': 32, 'conv3_2': 32, 'conv3_3': 32,
+    'conv4_1': 32, 'conv4_2': 32, 'conv4_3': 32,
+    'p_conv1': 16, 'p_conv2': 8
+}
         
         for layer_name in layers_to_prune:
             if layer_name in original_weights:
@@ -812,16 +812,16 @@ class StructuredPruner:
     
     def fine_tune_model(self, model, train_dataset, val_dataset, epochs=100, initial_lr=1e-4, sparsity_label=""):
         """Fine-tune the pruned model using custom training loop for Keras 3 compatibility"""
-        strategy = tf.distribute.MirroredStrategy()
-        with strategy.scope():
-            optimizer = tf.keras.optimizers.SGD(
-                learning_rate=initial_lr,
-                momentum=0.9
-            )
         optimizer = tf.keras.optimizers.SGD(
             learning_rate=initial_lr,
             momentum=0.9
         )
+        
+        best_val_loss = float('inf')
+        best_weights = None
+        patience_counter = 0
+        patience = 15
+        history_list = []
         
         best_val_loss = float('inf')
         best_weights = None
